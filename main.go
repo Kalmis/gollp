@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -24,14 +25,23 @@ type ReqData struct {
 	Message string
 }
 
-type ResData struct {
-	Status string
-	Data   string
-}
-
 func main() {
-	fmt.Println("I'm starting to do something now!")
-	listen, err := net.Listen("tcp", "localhost:2575")
+
+	help := flag.Bool("help", false, "Show help")
+	ip := flag.String("ip", "localhost", "Address to be listened, e.g. localhost or 0.0.0.0.")
+	port := flag.Int("port", 2575, "Port to be listened. ")
+	targetUrl := flag.String("url", "", "Target URL where data is sent as HTTP POST")
+	flag.Parse()
+	if *help {
+		flag.PrintDefaults()
+		return
+	}
+	if *targetUrl == "" {
+		log.Fatal("Target URL must be given")
+	}
+	address := fmt.Sprintf("%s:%d", *ip, *port)
+	fmt.Printf("Starting to listen %s and routing messages to %s\n", address, *targetUrl)
+	listen, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,12 +55,12 @@ func main() {
 			log.Fatal(err)
 		}
 		// CReate a new goroutine for handling the connection
-		go handleRequest(conn)
+		go handleRequest(conn, *targetUrl)
 
 	}
 }
 
-func handleRequest(conn net.Conn) {
+func handleRequest(conn net.Conn, targetUrl string) {
 	// Make sure connection is closed after we are done
 	defer conn.Close()
 	timeout := 5 * time.Second
@@ -76,7 +86,7 @@ func handleRequest(conn net.Conn) {
 			fmt.Println("ERROR: End block should be followed by CR")
 			return
 		}
-		if err := handleMessage(conn, msg[1:len(msg)-1]); err != nil {
+		if err := handleMessage(conn, msg[1:len(msg)-1], targetUrl); err != nil {
 			conn.Write([]byte(err.Error()))
 		}
 
@@ -84,13 +94,13 @@ func handleRequest(conn net.Conn) {
 
 }
 
-func handleMessage(conn net.Conn, msg []byte) error {
+func handleMessage(conn net.Conn, msg []byte, targetUrl string) error {
 	fmt.Print("INFO: Processing message\n", strings.ReplaceAll(string(msg), "\r", "\n"), "\n")
 	reqData := ReqData{string(msg)}
 
 	s, _ := json.Marshal(reqData)
 	buf := bytes.NewBuffer(s)
-	resp, err := http.Post("https://ptsv2.com/t/tz0jp-1616963104/post",
+	resp, err := http.Post(targetUrl,
 		"application/json", buf)
 
 	if err != nil {
@@ -103,13 +113,20 @@ func handleMessage(conn net.Conn, msg []byte) error {
 		fmt.Println("ERROR: Reading POST response body: ", err)
 		return errors.New("Error")
 	}
-	var response ResData
+	var response ReqData
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		fmt.Println("ERROR: Unmarshaling POST response body: ", err)
 		return errors.New("Error")
 	}
 
-	conn.Write([]byte(response.Data))
+	conn.Write(createMLLPMessage(response.Message))
 	return nil
+}
+
+func createMLLPMessage(msg string) []byte {
+	b := []byte{START_BLOCK}
+	b = append(b, []byte(msg)...)
+	b = append(b, END_BLOCK, CR)
+	return b
 }
