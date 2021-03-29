@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -52,55 +53,28 @@ func handleRequest(conn net.Conn) {
 	defer conn.Close()
 	timeout := 5 * time.Second
 
-	var msg []byte
-	var status string = "start"
-	tmpBufSize := 256
-	totalReceived := 0
-	var tmpBuf []byte
+	reader := bufio.NewReader(conn)
 	for {
 		conn.SetDeadline(time.Now().Add(timeout))
-		tmpBuf = make([]byte, tmpBufSize)
-		receivedLen, err := conn.Read(tmpBuf)
-		totalReceived = totalReceived + receivedLen
+		msg, err := reader.ReadBytes(END_BLOCK)
 		if err != nil {
-			log.Fatal(err)
-		}
-		for i := 0; i < receivedLen; i++ {
-			b := tmpBuf[i]
-			switch status {
-			case "start":
-				if b == START_BLOCK {
-					status = "msg"
-				} else {
-					return
-				}
-			case "msg":
-				if b == END_BLOCK {
-					status = "end"
-				} else if b == START_BLOCK {
-					return
-				} else {
-					msg = append(msg, b)
-				}
-			case "end":
-				if b == CR {
-					handleMessage(conn, msg)
-					totalReceived = 0
-					status = "start"
-					msg = nil
-				} else {
-					return
-				}
+			if err == io.EOF {
+				fmt.Println("INFO: EOF reached, closing connection")
+				return
 			}
+			fmt.Print(err)
+			return
+		}
+		if msg[0] != START_BLOCK {
+			fmt.Println("ERROR: Message first character should be byte 11")
+			return
 		}
 
-		if receivedLen < tmpBufSize {
-			fmt.Println("No more messages there ought to be")
-			break
-		} else if receivedLen == tmpBufSize {
-			// TODO
-			break
+		if b, err := reader.ReadByte(); b != CR || err != nil {
+			fmt.Println("ERROR: End block should be followed by CR")
+			return
 		}
+		handleMessage(conn, msg[1:len(msg)-1])
 
 	}
 
