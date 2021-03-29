@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -62,7 +64,7 @@ func handleRequest(conn net.Conn) {
 				fmt.Println("INFO: EOF reached, closing connection")
 				return
 			}
-			fmt.Print(err)
+			fmt.Print("ERROR: Reading connection: ", err)
 			return
 		}
 		if msg[0] != START_BLOCK {
@@ -74,14 +76,16 @@ func handleRequest(conn net.Conn) {
 			fmt.Println("ERROR: End block should be followed by CR")
 			return
 		}
-		handleMessage(conn, msg[1:len(msg)-1])
+		if err := handleMessage(conn, msg[1:len(msg)-1]); err != nil {
+			conn.Write([]byte(err.Error()))
+		}
 
 	}
 
 }
 
-func handleMessage(conn net.Conn, msg []byte) {
-	fmt.Println(string(msg))
+func handleMessage(conn net.Conn, msg []byte) error {
+	fmt.Print("INFO: Processing message\n", strings.ReplaceAll(string(msg), "\r", "\n"), "\n")
 	reqData := ReqData{string(msg)}
 
 	s, _ := json.Marshal(reqData)
@@ -90,19 +94,22 @@ func handleMessage(conn net.Conn, msg []byte) {
 		"application/json", buf)
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("ERROR: Post request error: ", err)
+		return errors.New("Error")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("ERROR: Reading POST response body: ", err)
+		return errors.New("Error")
 	}
 	var response ResData
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("ERROR: Unmarshaling POST response body: ", err)
+		return errors.New("Error")
 	}
 
 	conn.Write([]byte(response.Data))
-
+	return nil
 }
