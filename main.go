@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"time"
 )
 
@@ -12,6 +16,15 @@ const (
 	END_BLOCK   byte = 28
 	CR          byte = 13
 )
+
+type ReqData struct {
+	Message string
+}
+
+type ResData struct {
+	Status string
+	Data   string
+}
 
 func main() {
 	fmt.Println("I'm starting to do something now!")
@@ -57,32 +70,25 @@ func handleRequest(conn net.Conn) {
 			switch status {
 			case "start":
 				if b == START_BLOCK {
-					fmt.Println("Start start")
 					status = "msg"
 				} else {
-					fmt.Println("No start found")
 					return
 				}
 			case "msg":
 				if b == END_BLOCK {
-					fmt.Println("Message ends here")
 					status = "end"
 				} else if b == START_BLOCK {
-					fmt.Println("Start block should be in here")
 					return
 				} else {
-					fmt.Println("Normal " + string(b))
 					msg = append(msg, b)
 				}
 			case "end":
 				if b == CR {
-					fmt.Println("Message really ends here. Processing it")
-					handleMessage(msg)
+					handleMessage(conn, msg)
 					totalReceived = 0
 					status = "start"
 					msg = nil
 				} else {
-					fmt.Println("Expected CR after end")
 					return
 				}
 			}
@@ -92,7 +98,7 @@ func handleRequest(conn net.Conn) {
 			fmt.Println("No more messages there ought to be")
 			break
 		} else if receivedLen == tmpBufSize {
-			fmt.Println("COuld be, could be not")
+			// TODO
 			break
 		}
 
@@ -100,6 +106,29 @@ func handleRequest(conn net.Conn) {
 
 }
 
-func handleMessage(msg []byte) {
+func handleMessage(conn net.Conn, msg []byte) {
 	fmt.Println(string(msg))
+	reqData := ReqData{string(msg)}
+
+	s, _ := json.Marshal(reqData)
+	buf := bytes.NewBuffer(s)
+	resp, err := http.Post("https://ptsv2.com/t/tz0jp-1616963104/post",
+		"application/json", buf)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+	}
+	var response ResData
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	conn.Write([]byte(response.Data))
+
 }
