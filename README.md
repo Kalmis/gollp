@@ -35,6 +35,15 @@ MSH||||
 INFO: EOF reached, closing connection
 ```
 
+## Docker
+
+Gollp can also be run in Docker container
+
+```
+docker build -t gollp .
+docker run -it -p 3010:3010 gollp --ip 0.0.0.0 --port 3010 --url=https://ptsv2.com/t/bq56z-1617043531/post
+```
+
 # HTTP Data format
 
 Gollp sends messages forward in JSON format and assumes to receive response in same format. Currently the JSON is very simple. Message does not include the MLLP starting or ending block (including the last CR)
