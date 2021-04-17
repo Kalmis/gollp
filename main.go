@@ -32,6 +32,7 @@ func main() {
 	port := flag.Int("port", 2575, "Port to be listened. ")
 	targetUrl := flag.String("url", "", "Target URL where data is sent as HTTP POST")
 	flag.Parse()
+
 	if *help {
 		flag.PrintDefaults()
 		return
@@ -40,24 +41,32 @@ func main() {
 		log.Fatal("Target URL must be given")
 	}
 	address := fmt.Sprintf("%s:%d", *ip, *port)
-	fmt.Printf("Starting to listen %s and routing messages to %s\n", address, *targetUrl)
+
+	startServer(address, *targetUrl)
+}
+
+func startServer(address string, targetUrl string) {
+	fmt.Printf("Starting to listen %s and routing messages to %s\n", address, targetUrl)
 	listen, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Make sure to close the conneciton after leaving main
+	// Make sure to close the conneciton after leaving
 	defer listen.Close()
 
 	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		// CReate a new goroutine for handling the connection
-		go handleRequest(conn, *targetUrl)
-
+		acceptAndHandleRequest(listen, targetUrl)
 	}
+}
+
+func acceptAndHandleRequest(listen net.Listener, targetUrl string) {
+	conn, err := listen.Accept()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Create a new goroutine for handling the connection
+	go handleRequest(conn, targetUrl)
 }
 
 func handleRequest(conn net.Conn, targetUrl string) {
@@ -121,6 +130,7 @@ func handleMessage(conn net.Conn, msg []byte, targetUrl string) error {
 	}
 
 	conn.Write(createMLLPMessage(response.Message))
+	fmt.Println("INFO: Done")
 	return nil
 }
 
